@@ -1,0 +1,6 @@
+psutil
+easygui
+matplotlib
+opencv-python
+moviepy
+numpy
