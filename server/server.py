@@ -21,6 +21,9 @@ class system:
 class flags:
     run_check = -493644956
     int_check = -3483045
+    error_check = -454946398
+    max_error_lenght = 200
+    error_split = "\nwsd\n"
 
 class limits:
     preprocess = {"time" : 3, "memory" : 500}
@@ -28,19 +31,42 @@ class limits:
 
 class visualize:
     
-    def runIn(function, inputs : tuple, output : multiprocessing.Value):
-        result = function(*inputs)
+    def runIn(function, inputs : tuple, output : multiprocessing.Value, error : multiprocessing.Array):
+        try:
+            result = function(*inputs)
 
-        if(type(result) == int):
-            output.value = result
-        else:
-            output.value = flags.int_check
+            if(type(result) == int):
+                output.value = result
+            else:
+                output.value = flags.int_check
+
+        except Exception as e:
+            err_type = str(type(e)).split("'")[1]
+            err = err_type + flags.error_split + str(e)
+            
+            if(len(err) > flags.max_error_lenght):
+                err = err_type + flags.error_split + "None"
+            
+            for i in range(len(err)):
+                error[i] = ord(err[i])
+            
+
     
+    def is_raised(error : multiprocessing.Array) -> bool:
+        for i in range(flags.max_error_lenght):
+            if(error[i] != -1):
+                return True
+        return False
+
     def runFunction(function, inputs : tuple, time_limit : int, memory_limit : int) -> dict:
-        func_output = multiprocessing.Value('i',flags.run_check)
+        func_output = multiprocessing.Value('i', flags.run_check)
+        error = multiprocessing.Array('i', [-1] * flags.max_error_lenght)
+
+        
+
         output = {"error" : None, "output" : None, "time" : None, "details" : None}
 
-        task = multiprocessing.Process(target = visualize.runIn, args = (function, inputs, func_output))
+        task = multiprocessing.Process(target = visualize.runIn, args = (function, inputs, func_output, error))
         task.start()
 
         pid = task.pid
@@ -48,19 +74,27 @@ class visualize:
         start_time = time.time()
         memory = system.get_memory_usage(pid)
         
-        while((time.time() - start_time < time_limit) and (func_output.value == flags.run_check)):
+        while((time.time() - start_time < time_limit) and (func_output.value == flags.run_check) and (not visualize.is_raised(error))):
             memory_usage = system.get_memory_usage(pid)  - memory
             if(memory_usage > memory_limit):
                 task.terminate()
-
+                
                 output["error"] = "memory_limit"
                 return output
+        
+        if(visualize.is_raised(error)):
+            task.terminate()
 
+            output["error"], output["details"] = "".join(chr(error[i]) for i in range(flags.max_error_lenght) if error[i] != -1).split(flags.error_split)
+            
+            return output
         if(func_output.value == flags.run_check):
             task.terminate()
             
             output["error"] = "time_limit"
             return output
+
+        
         
         time_exc = time.time() - start_time
         
@@ -227,9 +261,11 @@ class game:
                         grid[result["output"]] = player_symbol
                 else:
                     action_log["error"] = result["error"]
+                    action_log["details"] = result["details"]
                 
 
             except Exception as error:
+           
                 result = {
                         "player_num" : player_id + 1,
                         "choice" : -1,
@@ -420,7 +456,6 @@ def main():
         print("---Draw    :", game_result[2])
     print(f"\nOutput: {dir}")
 
-    input("\n\nPress Enter to exit...")
 
 
 if(__name__ == "__main__"):
